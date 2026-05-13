@@ -9,6 +9,7 @@ dependencies = [
     "kaggle>=2.1.2",
     "kagglehub>=1.0.1",
     "numpy>=2.4.4",
+    "pandas>=3.0.3",
     "pathlib>=1.0.1",
     "pillow>=12.2.0",
     "scikit-learn>=1.8.0",
