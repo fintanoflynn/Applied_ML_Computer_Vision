@@ -32,7 +32,7 @@ class GreyScale:
         X = []
         y = []
 
-        image_size = (32, 32)
+        image_size = (64,64)
 
         for class_folder in grayscale_dir.iterdir():
             if not class_folder.is_dir():
@@ -80,7 +80,7 @@ class RegressionModel(GreyScale):
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
-            raise ValueError("Data has not been loaded. Run load_data() first.")
+            raise ValueError("Data has not been loaded.")
 
         self.model.fit(self.X_train, self.y_train)
         print("Model trained successfully.")
@@ -106,11 +106,11 @@ class Regression_PCA(RegressionModel):
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
-            raise ValueError("Data has not been loaded. Run load_data() first.")
+            raise ValueError("Data has not been loaded.")
 
         X_train_pca = self.pca.fit_transform(self.X_train)
         self.model.fit(X_train_pca, self.y_train)
-        print("Model trained successfully with PCA.")
+        print("Model has been trained with PCA.")
 
     def evaluate(self) -> None:
         if self.X_test is None or self.y_test is None:
@@ -126,7 +126,7 @@ class Regression_PCA(RegressionModel):
         print(report)
 
 if __name__ == "__main__":
-    model = Regression_PCA()
+    model = RegressionModel()
 
     model.load_data()
     model.train()
