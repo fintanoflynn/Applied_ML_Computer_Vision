@@ -140,15 +140,15 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
             drive_path = "/content/drive/MyDrive/resnet18_best.pt"
             if os.path.exists("/content/drive/MyDrive"):
                 shutil.copy("checkpoints/resnet18_best.pt", drive_path)
-                print(f"  → Checkpoint backed up to Google Drive")
-            print(f"  → New best val_acc={val_acc:.4f} — model saved")
+                print(f"Checkpoint saved to Drive folder")
+            print(f"New best validation accurcy={val_acc:.4f} - model saved")
 
         else:
             patience_counter += 1
-            print(f"  → No improvement ({patience_counter}/{patience})")
+            print(f"No improvement seen ({patience_counter}/{patience})")
             if patience_counter >= patience:
                 print("Early stopping triggered.")
                 break
             
-    print(f"\nTraining complete. Best val_acc={best_val_acc:.4f}")
+    print(f"\nTraining complete. Best validation accuracy={best_val_acc:.4f}")
     return best_val_acc
