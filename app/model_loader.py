@@ -1,0 +1,133 @@
+"""Load the CNN or baseline checkpoint and expose a unified prediction API.
+
+A single ``Predictor`` instance is constructed at FastAPI startup. The rest of
+the app does not need to know which architecture is loaded — it just calls
+``predictor.predict_proba(image_bytes)``.
+"""
+
+from __future__ import annotations
+
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+import joblib
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from app import config
+from app.classes import CLASS_NAMES, NUM_CLASSES
+from app.preprocessing import (
+    BASELINE_INPUT_SIZE,
+    CNN_INPUT_SIZE,
+    preprocess_for_baseline,
+    preprocess_for_cnn,
+)
+
+# Make `from src.models.cnn_scratch import CNN` work regardless of where uvicorn
+# was launched from.
+sys.path.insert(0, str(config.PROJECT_ROOT))
+
+
+class ModelNotLoadedError(RuntimeError):
+    """Raised when a prediction is requested but no checkpoint was loaded."""
+
+
+@dataclass(frozen=True)
+class Predictor:
+    """Unified interface around either CNN or baseline."""
+
+    model_type: str
+    checkpoint_path: Path
+    device: str
+    input_size: tuple[int, int]
+    _predict_proba_fn: Callable[[bytes], np.ndarray]
+
+    def predict_proba(self, image_bytes: bytes) -> np.ndarray:
+        """Return a 1-D ``(num_classes,)`` array of class probabilities."""
+        return self._predict_proba_fn(image_bytes)
+
+
+def _load_cnn(checkpoint_path: Path) -> Predictor:
+    from src.models.cnn_scratch import CNN  # local import to avoid torch cost on baseline path
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = CNN()
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    # Tolerate checkpoints saved as {"state_dict": ..., ...} as well as raw state_dicts.
+    if isinstance(state_dict, dict) and "state_dict" in state_dict:
+        state_dict = state_dict["state_dict"]
+    model.load_state_dict(state_dict)
+    model.to(device).eval()
+
+    def _predict(image_bytes: bytes) -> np.ndarray:
+        tensor = preprocess_for_cnn(image_bytes).to(device)
+        with torch.no_grad():
+            logits = model(tensor)
+            probs = F.softmax(logits, dim=1).cpu().numpy()[0]
+        return probs
+
+    return Predictor(
+        model_type="cnn",
+        checkpoint_path=checkpoint_path,
+        device=device,
+        input_size=CNN_INPUT_SIZE,
+        _predict_proba_fn=_predict,
+    )
+
+
+def _load_baseline(checkpoint_path: Path) -> Predictor:
+    sklearn_model = joblib.load(checkpoint_path)
+
+    # The sklearn classifier knows its own label ordering. Map it onto the
+    # canonical CLASS_NAMES index order so callers always see the same layout.
+    model_classes = list(getattr(sklearn_model, "classes_", []))
+    if not model_classes:
+        raise RuntimeError(
+            "Baseline checkpoint has no `classes_` attribute — was it really a "
+            "fitted sklearn classifier?"
+        )
+
+    permutation = np.array(
+        [model_classes.index(name) for name in CLASS_NAMES if name in model_classes]
+    )
+    if len(permutation) != NUM_CLASSES:
+        raise RuntimeError(
+            f"Baseline classifier has {len(model_classes)} classes, but the API "
+            f"expects {NUM_CLASSES}. Did training cover all PlantVillage classes?"
+        )
+
+    def _predict(image_bytes: bytes) -> np.ndarray:
+        features = preprocess_for_baseline(image_bytes)
+        probs = sklearn_model.predict_proba(features)[0]
+        return probs[permutation]
+
+    return Predictor(
+        model_type="baseline",
+        checkpoint_path=checkpoint_path,
+        device="cpu",
+        input_size=BASELINE_INPUT_SIZE,
+        _predict_proba_fn=_predict,
+    )
+
+
+def load_predictor() -> Predictor | None:
+    """Build a predictor based on env-var config, or ``None`` if no checkpoint.
+
+    Returning ``None`` (rather than raising) lets the API still come up — useful
+    when teammates have not yet handed over the trained weights. The health
+    endpoint and /predict will then surface the missing-model state cleanly.
+    """
+    if not config.MODEL_PATH.is_file():
+        return None
+
+    if config.MODEL_TYPE == "cnn":
+        return _load_cnn(config.MODEL_PATH)
+    if config.MODEL_TYPE == "baseline":
+        return _load_baseline(config.MODEL_PATH)
+
+    raise ValueError(
+        f"Unknown MODEL_TYPE={config.MODEL_TYPE!r}. Expected 'cnn' or 'baseline'."
+    )
