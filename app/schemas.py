@@ -44,7 +44,7 @@ class ModelInfo(BaseModel):
 
     model_type: str = Field(
         ...,
-        description="Which architecture is loaded: 'cnn' or 'baseline'.",
+        description="Which architecture is loaded: 'cnn', 'resnet', or 'baseline'.",
         examples=["cnn"],
     )
     checkpoint_path: str = Field(

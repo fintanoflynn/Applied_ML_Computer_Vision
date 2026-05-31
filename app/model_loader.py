@@ -22,8 +22,10 @@ from app.classes import CLASS_NAMES, NUM_CLASSES
 from app.preprocessing import (
     BASELINE_INPUT_SIZE,
     CNN_INPUT_SIZE,
+    RESNET_INPUT_SIZE,
     preprocess_for_baseline,
     preprocess_for_cnn,
+    preprocess_for_resnet,
 )
 
 # Make `from src.models.cnn_scratch import CNN` work regardless of where uvicorn
@@ -78,6 +80,50 @@ def _load_cnn(checkpoint_path: Path) -> Predictor:
     )
 
 
+def _load_resnet(checkpoint_path: Path) -> Predictor:
+    from src.models.resnet_transfer import build_resnet18  # local import: needs src on path
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = build_resnet18(num_classes=NUM_CLASSES)
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # train.py saves {"model_state": ..., "classes": ..., ...}; also tolerate a
+    # "state_dict" key or a raw state_dict for hand-saved checkpoints.
+    if isinstance(checkpoint, dict):
+        state_dict = (
+            checkpoint.get("model_state")
+            or checkpoint.get("state_dict")
+            or checkpoint
+        )
+        saved_classes = checkpoint.get("classes")
+        if saved_classes is not None and list(saved_classes) != CLASS_NAMES:
+            raise RuntimeError(
+                "ResNet checkpoint was trained on a different class ordering than "
+                "app/classes.py. Predictions would be mislabelled. Re-export the "
+                "checkpoint or align CLASS_NAMES with the training class list."
+            )
+    else:
+        state_dict = checkpoint
+
+    model.load_state_dict(state_dict)
+    model.to(device).eval()
+
+    def _predict(image_bytes: bytes) -> np.ndarray:
+        tensor = preprocess_for_resnet(image_bytes).to(device)
+        with torch.no_grad():
+            logits = model(tensor)
+            probs = F.softmax(logits, dim=1).cpu().numpy()[0]
+        return probs
+
+    return Predictor(
+        model_type="resnet",
+        checkpoint_path=checkpoint_path,
+        device=device,
+        input_size=RESNET_INPUT_SIZE,
+        _predict_proba_fn=_predict,
+    )
+
+
 def _load_baseline(checkpoint_path: Path) -> Predictor:
     sklearn_model = joblib.load(checkpoint_path)
 
@@ -125,9 +171,11 @@ def load_predictor() -> Predictor | None:
 
     if config.MODEL_TYPE == "cnn":
         return _load_cnn(config.MODEL_PATH)
+    if config.MODEL_TYPE == "resnet":
+        return _load_resnet(config.MODEL_PATH)
     if config.MODEL_TYPE == "baseline":
         return _load_baseline(config.MODEL_PATH)
 
     raise ValueError(
-        f"Unknown MODEL_TYPE={config.MODEL_TYPE!r}. Expected 'cnn' or 'baseline'."
+        f"Unknown MODEL_TYPE={config.MODEL_TYPE!r}. Expected 'cnn', 'resnet', or 'baseline'."
     )

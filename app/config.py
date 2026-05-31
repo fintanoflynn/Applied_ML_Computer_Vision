@@ -7,11 +7,12 @@ from pathlib import Path
 
 PROJECT_ROOT: Path = Path(__file__).resolve().parents[1]
 
-# Which architecture to serve: "cnn" or "baseline".
+# Which architecture to serve: "cnn", "resnet", or "baseline".
 MODEL_TYPE: str = os.environ.get("MODEL_TYPE", "cnn").lower()
 
 _DEFAULT_CHECKPOINTS = {
     "cnn": PROJECT_ROOT / "models" / "cnn_scratch.pth",
+    "resnet": PROJECT_ROOT / "models" / "resnet18_best.pt",
     "baseline": PROJECT_ROOT / "models" / "baseline.joblib",
 }
 

@@ -13,11 +13,24 @@ import io
 import numpy as np
 import torch
 from PIL import Image, UnidentifiedImageError
+from torchvision import transforms as T
 
 # CNN: RGB, resized to 256x256, scaled to [0, 1], in NCHW layout.
 CNN_INPUT_SIZE: tuple[int, int] = (256, 256)
 # Baseline logistic regression: grayscale, 64x64, flattened to a 4096-dim vector.
 BASELINE_INPUT_SIZE: tuple[int, int] = (64, 64)
+# ResNet-18 transfer model: RGB, 224x224 after a 256 resize + center crop,
+# normalised with ImageNet statistics. Must mirror build_eval_transform in
+# src/data/transforms.py exactly, or predictions will be silently wrong.
+RESNET_INPUT_SIZE: tuple[int, int] = (224, 224)
+_IMAGENET_MEAN = [0.485, 0.456, 0.406]
+_IMAGENET_STD = [0.229, 0.224, 0.225]
+_RESNET_TRANSFORM = T.Compose([
+    T.Resize(256),
+    T.CenterCrop(224),
+    T.ToTensor(),
+    T.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD),
+])
 
 
 class InvalidImageError(ValueError):
@@ -42,6 +55,13 @@ def preprocess_for_cnn(image_bytes: bytes) -> torch.Tensor:
     image = _open_image(image_bytes).convert("RGB").resize(CNN_INPUT_SIZE)
     array = np.asarray(image, dtype=np.float32) / 255.0
     tensor = torch.from_numpy(array).permute(2, 0, 1).unsqueeze(0).contiguous()
+    return tensor
+
+
+def preprocess_for_resnet(image_bytes: bytes) -> torch.Tensor:
+    """Decode bytes → (1, 3, 224, 224) ImageNet-normalised float tensor."""
+    image = _open_image(image_bytes).convert("RGB")
+    tensor = _RESNET_TRANSFORM(image).unsqueeze(0).contiguous()
     return tensor
 
 
