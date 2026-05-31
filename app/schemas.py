@@ -121,10 +121,14 @@ class HealthResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Body returned for non-2xx responses."""
+    """Body returned for non-2xx responses.
+
+    The concrete ``detail`` text differs per status code — see the per-status
+    examples on each endpoint's response table for what to expect.
+    """
 
     detail: str = Field(
         ...,
-        description="Human-readable explanation of what went wrong.",
-        examples=["Uploaded file is not a readable image."],
+        description="Human-readable explanation of what went wrong. The exact "
+                    "wording is specific to the status code returned.",
     )

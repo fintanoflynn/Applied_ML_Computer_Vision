@@ -36,6 +36,24 @@ ACCEPTED_MIME_PREFIXES = ("image/",)
 ACCEPTED_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 
 
+def _error_response(description: str, example_detail: str) -> dict:
+    """Build an OpenAPI response entry that pins a concrete example body.
+
+    Without an explicit ``content`` example, Swagger renders the same generic
+    placeholder for every error status code (because they all share the same
+    ``ErrorResponse`` schema), which makes the docs look like every error
+    returns the same message. Spelling out the example per status keeps the
+    docs honest about what users will actually see.
+    """
+    return {
+        "model": ErrorResponse,
+        "description": description,
+        "content": {
+            "application/json": {"example": {"detail": example_detail}}
+        },
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: D401 — FastAPI lifespan hook
     """Load the model checkpoint once, when the server starts."""
@@ -70,7 +88,12 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     responses={
-        503: {"model": ErrorResponse, "description": "Model not loaded."},
+        503: _error_response(
+            "Model not loaded.",
+            f"No model checkpoint loaded. Expected a file at "
+            f"{config.MODEL_PATH}. Set MODEL_PATH / MODEL_TYPE env vars or "
+            f"drop a checkpoint into the models/ directory and restart.",
+        ),
     },
 )
 
@@ -208,7 +231,14 @@ async def classes() -> ClassesResponse:
     response_model=ModelInfo,
     summary="Describe the loaded model",
     tags=["meta"],
-    responses={503: {"model": ErrorResponse}},
+    responses={
+        503: _error_response(
+            "Model not loaded.",
+            f"No model checkpoint loaded. Expected a file at "
+            f"{config.MODEL_PATH}. Set MODEL_PATH / MODEL_TYPE env vars or "
+            f"drop a checkpoint into the models/ directory and restart.",
+        ),
+    },
 )
 async def model_info() -> ModelInfo:
     """Return metadata about the model checkpoint that is currently serving predictions."""
@@ -221,11 +251,30 @@ async def model_info() -> ModelInfo:
     summary="Classify a single leaf image",
     tags=["predictions"],
     responses={
-        400: {"model": ErrorResponse, "description": "Empty file."},
-        413: {"model": ErrorResponse, "description": "File too large."},
-        415: {"model": ErrorResponse, "description": "Unsupported content type."},
-        422: {"model": ErrorResponse, "description": "Image could not be decoded."},
-        503: {"model": ErrorResponse, "description": "Model not loaded."},
+        400: _error_response(
+            "Empty file.",
+            "Uploaded file is empty.",
+        ),
+        413: _error_response(
+            "File too large.",
+            f"Uploaded file is 15728640 bytes, which exceeds the "
+            f"{config.MAX_UPLOAD_BYTES}-byte limit.",
+        ),
+        415: _error_response(
+            "Unsupported content type.",
+            "Unsupported content type 'application/pdf'. Send a JPEG or PNG "
+            "image (image/jpeg, image/png).",
+        ),
+        422: _error_response(
+            "Image could not be decoded.",
+            "Uploaded file is not a readable image. Supported formats: JPEG, PNG.",
+        ),
+        503: _error_response(
+            "Model not loaded.",
+            f"No model checkpoint loaded. Expected a file at "
+            f"{config.MODEL_PATH}. Set MODEL_PATH / MODEL_TYPE env vars or "
+            f"drop a checkpoint into the models/ directory and restart.",
+        ),
     },
 )
 async def predict(
