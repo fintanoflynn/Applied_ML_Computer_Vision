@@ -19,7 +19,7 @@ PATIENCE = 5
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
 RANDOM_SEED = 42
-MODEL_SAVE_PATH = Path("models/cnn_from_scratch_best.pth")
+MODEL_SAVE_PATH = Path("models/cnn_scratch.pth")
 
 
 def split_data(samples):

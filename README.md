@@ -39,7 +39,7 @@ trained file into the `models/` directory at one of the default paths below:
 | Model type | Default path                  | File format                        |
 |------------|-------------------------------|------------------------------------|
 | `resnet`   | `models/resnet18_best.pt`     | PyTorch checkpoint dict (`.pt`)    |
-| `cnn`      | `models/cnn_scratch.pth`      | PyTorch state-dict (`.pth`)        |
+| `cnn`      | `models/cnn_scratch.pth`      | PyTorch checkpoint dict (.pth)     |
 | `baseline` | `models/baseline.joblib`      | `joblib.dump`'d sklearn estimator  |
 
 The `models/` directory is gitignored, so checkpoints are not committed.
