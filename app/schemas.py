@@ -112,11 +112,17 @@ class HealthResponse(BaseModel):
     )
     model_loaded: bool = Field(
         ...,
-        description="True if a model checkpoint was successfully loaded at startup.",
+        description="True if at least one model checkpoint was loaded at startup.",
     )
     model_type: str | None = Field(
         None,
-        description="Which architecture is currently loaded, if any.",
+        description="The default model used when no model_type is given in the "
+                    "/predict path. ``None`` if no models loaded.",
+    )
+    models_loaded: list[str] = Field(
+        default_factory=list,
+        description="All model architectures available at /predict/{model_type}.",
+        examples=[["resnet", "cnn"]],
     )
 
 

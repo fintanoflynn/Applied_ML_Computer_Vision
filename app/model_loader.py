@@ -183,6 +183,31 @@ def _load_baseline(checkpoint_path: Path) -> Predictor:
     )
 
 
+def load_all_predictors() -> dict[str, Predictor]:
+    """Load every model whose default checkpoint file is present on disk.
+
+    Models without a checkpoint are silently skipped so the API can come up
+    with whichever subset of models the user has trained. Failures to load a
+    present checkpoint are reported but do not block startup of the others.
+    """
+    loaders = {
+        "resnet": (_load_resnet, config.DEFAULT_CHECKPOINTS["resnet"]),
+        "cnn": (_load_cnn, config.DEFAULT_CHECKPOINTS["cnn"]),
+        "baseline": (_load_baseline, config.DEFAULT_CHECKPOINTS["baseline"]),
+    }
+    predictors: dict[str, Predictor] = {}
+    for name, (loader_fn, ckpt_path) in loaders.items():
+        if not ckpt_path.is_file():
+            print(f"[startup] No {name} checkpoint at {ckpt_path}; skipping.")
+            continue
+        try:
+            predictors[name] = loader_fn(ckpt_path)
+            print(f"[startup] Loaded {name} from {ckpt_path}.")
+        except Exception as exc:  # noqa: BLE001 — report and continue
+            print(f"[startup] Failed to load {name} from {ckpt_path}: {exc}")
+    return predictors
+
+
 def load_predictor() -> Predictor | None:
     """Build a predictor based on env-var config, or ``None`` if no checkpoint.
 
