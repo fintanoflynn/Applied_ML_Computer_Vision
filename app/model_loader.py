@@ -57,15 +57,39 @@ def _load_cnn(checkpoint_path: Path) -> Predictor:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = CNN()
-    state_dict = torch.load(checkpoint_path, map_location=device)
-    # Tolerate checkpoints saved as {"state_dict": ..., ...} as well as raw state_dicts.
-    if isinstance(state_dict, dict) and "state_dict" in state_dict:
-        state_dict = state_dict["state_dict"]
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    # The checkpoint stores the dataset channel mean/std the model was normalised
+    # with at training time. We must reapply the same normalisation at inference,
+    # or the model sees a different input distribution and predicts poorly.
+    mean = std = None
+    if isinstance(checkpoint, dict):
+        # Tolerate the various keys used to wrap the weights.
+        state_dict = (
+            checkpoint.get("model_state_dict")
+            or checkpoint.get("state_dict")
+            or checkpoint.get("model_state")
+            or checkpoint
+        )
+        if checkpoint.get("mean") is not None and checkpoint.get("std") is not None:
+            mean = torch.tensor(checkpoint["mean"], device=device).view(1, 3, 1, 1)
+            std = torch.tensor(checkpoint["std"], device=device).view(1, 3, 1, 1)
+        saved_classes = checkpoint.get("classes")
+        if saved_classes is not None and list(saved_classes) != CLASS_NAMES:
+            raise RuntimeError(
+                "CNN checkpoint was trained on a different class ordering than "
+                "app/classes.py. Predictions would be mislabelled."
+            )
+    else:
+        state_dict = checkpoint
+
     model.load_state_dict(state_dict)
     model.to(device).eval()
 
     def _predict(image_bytes: bytes) -> np.ndarray:
         tensor = preprocess_for_cnn(image_bytes).to(device)
+        if mean is not None:
+            tensor = (tensor - mean) / std
         with torch.no_grad():
             logits = model(tensor)
             probs = F.softmax(logits, dim=1).cpu().numpy()[0]
