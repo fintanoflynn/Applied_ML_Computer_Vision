@@ -1,4 +1,4 @@
-"""A baseline model implemented using logistic regression on grayscale images."""
+"""Logistic regression baseline for PlantVillage grayscale images."""
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -64,7 +64,7 @@ class GreyScale:
             stratify=y,
         )
 
-        print("Data loaded successfully.")
+        print("Loaded data.")
         print(f"Total images: {len(X)}")
         print(f"Feature shape: {X.shape}")
         print(f"Training set: {self.X_train.shape}")
@@ -97,7 +97,7 @@ class RegressionModel(GreyScale):
         print(report)
 
 
-class Regression_PCA(RegressionModel):
+class RegressionPCA(RegressionModel):
     def __init__(self, n_components) -> None:
         super().__init__()
         self.n_components = n_components
@@ -105,17 +105,17 @@ class Regression_PCA(RegressionModel):
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
-            raise ValueError("Data has not been loaded.")
+            raise ValueError("Error with loading the data.")
         
         print(f"Training PCA model with n_components={self.n_components}")
 
         X_train_pca = self.pca.fit_transform(self.X_train)
         self.model.fit(X_train_pca, self.y_train)
-        print("Model has been trained with PCA.")
+        print("PCA model is finished training.")
 
     def evaluate(self) -> None:
         if self.X_test is None or self.y_test is None:
-            raise ValueError("Data has not been loaded.")
+            raise ValueError("Error with loading the data.")
 
         X_test_pca = self.pca.transform(self.X_test)
         y_pred = self.model.predict(X_test_pca)
@@ -127,7 +127,7 @@ class Regression_PCA(RegressionModel):
         print(report)
 
    
-    def scree_plot(self, max_components=100) -> None:
+    def scree_plot(self, max_components=300) -> None:
         if self.X_train is None:
             raise ValueError("Data has not been loaded.")
 
@@ -146,15 +146,23 @@ class Regression_PCA(RegressionModel):
             linestyle="-"
         )
         plt.title("Scree Plot")
-        plt.xlabel("Principal Component")
+        plt.xlabel("Dimension")
         plt.ylabel("Explained Variance Ratio")
         plt.grid(True)
         plt.show()
 
 if __name__ == "__main__":
-    model = Regression_PCA(n_components=50)
+    print("Linear Regression model","="*50)
+    model1 = RegressionModel()
+    
 
-    model.load_data()
-    model.scree_plot(max_components=100)
-    model.train()
-    model.evaluate()
+    model1.load_data()
+    model1.train()
+    model1.evaluate()
+
+    print("Model 2","="*50)
+    model2 = RegressionPCA(n_components=50)
+    model2.load_data()
+    model2.train()
+    model2.evaluate()
+    model2.scree_plot()
