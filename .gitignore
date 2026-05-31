@@ -1,1 +1,19 @@
+# Python environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Mac files
+.DS_Store
+
+# Downloaded/generated data
 data/raw/
+data/processed/
+
+# Trained model checkpoints (heavy, regenerable)
+models/*.pth
+models/*.pt
+models/*.joblib
+models/*.pkl
