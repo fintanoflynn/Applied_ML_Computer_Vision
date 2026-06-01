@@ -6,7 +6,7 @@ classes (plant species + disease, or `healthy`).
 
 This repo contains:
 
-* `src/models/resnet_transfer.py` — a ResNet-18 transfer-learning model (our best model).
+* `src/models/resnet_transfer.py` — a ResNet-18 transfer-learning model.
 * `src/models/cnn_scratch.py` — a small CNN trained from scratch in PyTorch.
 * `src/models/base_line.py` — a logistic-regression baseline on 64×64 grayscale.
 * `app/` — a FastAPI service that exposes the trained model as a REST API.
@@ -137,23 +137,7 @@ Response (truncated):
 | `POST` | `/predict`                 | Classify a leaf image with the default model.          |
 | `POST` | `/predict/{model_type}`    | Classify a leaf image with `resnet`, `cnn`, or `baseline`. |
 
-## 7. Repository layout
-
-```
-app/                  FastAPI service
-  classes.py          38 PlantVillage labels
-  config.py           Env-var driven config
-  main.py             Endpoints and lifespan
-  model_loader.py     Loads ResNet / CNN / baseline; unified Predictor
-  preprocessing.py    Image bytes -> tensor / feature vector
-  schemas.py          Pydantic request/response models
-src/                  Training-side code
-  data/               Dataset download + Dataset class
-  models/             Model architectures (ResNet-18, CNN, logistic baseline)
-models/               Trained checkpoints (gitignored)
-```
-
-## 8. Model performance
+## 7. Evidence of model performance above random guessing
 
 The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 `src/training/evaluate.py`:
@@ -166,10 +150,22 @@ The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 |------------------------------------------|---------|
 | Test accuracy                            | **92.84%** |
 | Test set size                            | 8,146 images |
-| Random baseline (always predict majority class) | 10.14% (826 / 8,146, *Orange — Citrus greening*) |
+| Majority-class baseline accuracy         | **10.14%** (826 / 8,146, *Orange — Citrus greening*) |
 
 The model performs far above the majority-class baseline (92.84% vs 10.14%),
 with a weighted F1 of 0.929 across all 38 classes.
+
+### CNN from scratch performance
+
+The CNN from scratch model was evaluated on the validation split.
+
+| Metric | Value |
+|--------|-------|
+| Test accuracy | **98.92%** |
+| Test set size | 8,146 images |
+| Majority-class baseline accuracy | **10.14%** |
+
+The CNN performs above the majority-class baseline: 98.92% vs 10.14%.
 
 ## LLM declaration
 
