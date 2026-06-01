@@ -149,8 +149,11 @@ def _load_resnet(checkpoint_path: Path) -> Predictor:
 
 
 def _load_baseline(checkpoint_path: Path) -> Predictor:
-    sklearn_model = joblib.load(checkpoint_path)
-
+    """PCA Logistic Regressor."""
+    model_artifact = joblib.load(checkpoint_path)
+    sklearn_model = model_artifact["model"]
+    pca = model_artifact["pca"]
+    
     # The sklearn classifier knows its own label ordering. Map it onto the
     # canonical CLASS_NAMES index order so callers always see the same layout.
     model_classes = list(getattr(sklearn_model, "classes_", []))
@@ -171,7 +174,8 @@ def _load_baseline(checkpoint_path: Path) -> Predictor:
 
     def _predict(image_bytes: bytes) -> np.ndarray:
         features = preprocess_for_baseline(image_bytes)
-        probs = sklearn_model.predict_proba(features)[0]
+        features_pca = pca.transform(features.reshape(1, -1))
+        probs = sklearn_model.predict_proba(features_pca)[0]
         return probs[permutation]
 
     return Predictor(

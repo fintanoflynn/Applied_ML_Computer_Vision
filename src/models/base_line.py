@@ -20,21 +20,14 @@ class GreyScale:
     def load_data(self) -> None:
         project_root = Path(__file__).resolve().parents[2]
 
-        grayscale_dir = (
-            project_root
-            / "data"
-            / "raw"
-            / "plantvillage"
-            / "plantvillage dataset"
-            / "grayscale"
-        )
+        raw_dir = project_root / "data" / "raw"
 
         X = []
         y = []
 
-        image_size = (32,32)
+        image_size = (32, 32)
 
-        for class_folder in grayscale_dir.iterdir():
+        for class_folder in raw_dir.iterdir():
             if not class_folder.is_dir():
                 continue
 
@@ -44,11 +37,11 @@ class GreyScale:
                 if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
                     continue
 
-                image = Image.open(image_path).convert("L")
+                # Open as RGB then convert to grayscale
+                image = Image.open(image_path).convert("RGB").convert("L")
                 image = image.resize(image_size)
 
                 pixels = np.array(image, dtype=np.float32).flatten()
-
                 pixels = pixels / 255.0
 
                 X.append(pixels)
@@ -157,20 +150,21 @@ class RegressionPCA(RegressionModel):
         plt.grid(True)
         plt.show()
 
+    def save_model(self, path: Path) -> None:
+        """Provide path with .joblib extension"""
+        model_artifact = {
+            "model": self.model,
+            "pca": self.pca,
+        }
+        joblib.dump(model_artifact, path)
+        print(f"Model and PCA saved to {path}")
+
 if __name__ == "__main__":
-    print("Linear Regression model","="*50)
-    model1 = RegressionModel()
-    
-
-    model1.load_data()
-    model1.train()
-    model1.evaluate()
-    model1.save_model(Path("models/logistic_regression.joblib"))
-
-    print("Model 2","="*50)
-    model2 = RegressionPCA(n_components=50)
-    model2.load_data()
-    model2.train()
-    model2.evaluate()
-    model2.scree_plot()
-    model2.save_model(Path("models/logistic_regression_pca_50.joblib"))
+   
+    print("PCA Regression Model","="*50)
+    model = RegressionPCA(n_components=50)
+    model.load_data()
+    model.train()
+    model.evaluate()
+    model.scree_plot()
+    model.save_model(Path("models/logistic_regression_pca_50.joblib"))
