@@ -17,3 +17,5 @@ models/*.pth
 models/*.pt
 models/*.joblib
 models/*.pkl
+/models/*
+!/models/.gitkeep
