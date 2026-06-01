@@ -1,6 +1,7 @@
 """Logistic regression baseline for PlantVillage grayscale images."""
 import numpy as np
 import matplotlib.pyplot as plt
+import joblib
 
 from PIL import Image
 from sklearn.model_selection import train_test_split
@@ -96,6 +97,11 @@ class RegressionModel(GreyScale):
         print("Classification Report:")
         print(report)
 
+    def save_model(self, path: Path) -> None:
+        """Provide path with .joblib extension"""
+        joblib.dump(self.model, path)
+        print(f"Model saved to {path}")
+
 
 class RegressionPCA(RegressionModel):
     def __init__(self, n_components) -> None:
@@ -159,6 +165,7 @@ if __name__ == "__main__":
     model1.load_data()
     model1.train()
     model1.evaluate()
+    model1.save_model(Path("models/logistic_regression.joblib"))
 
     print("Model 2","="*50)
     model2 = RegressionPCA(n_components=50)
@@ -166,3 +173,4 @@ if __name__ == "__main__":
     model2.train()
     model2.evaluate()
     model2.scree_plot()
+    model2.save_model(Path("models/logistic_regression_pca_50.joblib"))
