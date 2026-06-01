@@ -17,8 +17,8 @@ from torchvision import transforms as T
 
 # CNN: RGB, resized to 256x256, scaled to [0, 1], in NCHW layout.
 CNN_INPUT_SIZE: tuple[int, int] = (256, 256)
-# Baseline logistic regression: grayscale, 64x64, flattened to a 4096-dim vector.
-BASELINE_INPUT_SIZE: tuple[int, int] = (64, 64)
+# Baseline logistic regression: grayscale, 32x32, flattened to a 1024-dim vector.
+BASELINE_INPUT_SIZE: tuple[int, int] = (32, 32)
 # ResNet-18 transfer model: RGB, 224x224 after a 256 resize + center crop,
 # normalised with ImageNet statistics. Must mirror build_eval_transform in
 # src/data/transforms.py exactly, or predictions will be silently wrong.

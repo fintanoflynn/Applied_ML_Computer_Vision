@@ -232,7 +232,7 @@ def _predict_with_topk(predictor: Predictor, image_bytes: bytes, k: int) -> Pred
 _MODEL_BLURBS: dict[str, tuple[str, str]] = {
     "resnet": ("ResNet-18 (transfer learning)", "Test accuracy 92.84%"),
     "cnn":    ("CNN from scratch",              "Validation macro-F1 0.989"),
-    "baseline": ("Logistic regression baseline", "Grayscale 64×64"),
+    "baseline": ("Logistic regression baseline", "Grayscale 32x32"),
 }
 
 
