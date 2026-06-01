@@ -31,10 +31,23 @@ python -m venv .venv
 pip install -e .
 ```
 
-## 2. Provide a trained model checkpoint
+## 2. Download trained models
 
-The API loads a single checkpoint at startup, chosen by `MODEL_TYPE`. Drop your
-trained file into the `models/` directory at one of the default paths below:
+Download the models from Google Drive:
+[Download model checkpoints](https://drive.google.com/drive/folders/1ZpwCm-rw07Xf7l6UxsAXU_bi8rX67wjo?usp=drive_link)
+
+After downloading, place the files in the `models/` directory with these exact names:
+
+| Model type | Required filename |
+|------------|-------------------|
+| `resnet`   | `models/resnet18_best.pt` |
+| `cnn`      | `models/cnn_scratch.pth` |
+| `baseline` | `models/baseline.joblib` |
+
+
+## 3. Provide a trained model checkpoint
+
+At startup, the API checks the `models/` directory and loads every checkpoint that exists at the expected default path. `MODEL_TYPE` only controls which loaded model is used as the default for `/predict`. Drop your trained file into the `models/` directory at one of the default paths below:
 
 | Model type | Default path                  | File format                        |
 |------------|-------------------------------|------------------------------------|
@@ -43,6 +56,7 @@ trained file into the `models/` directory at one of the default paths below:
 | `baseline` | `models/baseline.joblib`      | `joblib.dump`'d sklearn estimator  |
 
 The `models/` directory is gitignored, so checkpoints are not committed.
+They must be downloaded separately from the Google Drive link above.
 
 You can override the type and path with environment variables:
 
@@ -52,7 +66,7 @@ You can override the type and path with environment variables:
 | `MODEL_PATH`       | matches `MODEL_TYPE`     | Path to the checkpoint file               |
 | `MAX_UPLOAD_BYTES` | `10485760` (10 MiB)      | Maximum request size for `/predict`       |
 
-## 3. Launch the API
+## 4. Launch the API
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -73,7 +87,7 @@ without restarting. The service listens on <http://127.0.0.1:8000>.
 If no checkpoint exists at the expected path the API still starts, but
 `/predict` returns `503 Service Unavailable` until you provide one.
 
-## 4. Make a request
+## 5. Make a request
 
 ```bash
 # Default model (whatever MODEL_TYPE env var picks; falls back to first loaded):
@@ -112,7 +126,7 @@ Response (truncated):
 }
 ```
 
-## 5. Endpoints
+## 6. Endpoints
 
 | Method | Path                       | Purpose                                                |
 |--------|----------------------------|--------------------------------------------------------|
@@ -123,7 +137,7 @@ Response (truncated):
 | `POST` | `/predict`                 | Classify a leaf image with the default model.          |
 | `POST` | `/predict/{model_type}`    | Classify a leaf image with `resnet`, `cnn`, or `baseline`. |
 
-## 6. Repository layout
+## 7. Repository layout
 
 ```
 app/                  FastAPI service
@@ -139,7 +153,7 @@ src/                  Training-side code
 models/               Trained checkpoints (gitignored)
 ```
 
-## 7. Model performance
+## 8. Model performance
 
 The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 `src/training/evaluate.py`:
