@@ -170,3 +170,8 @@ The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 
 The model performs far above the majority-class baseline (92.84% vs 10.14%),
 with a weighted F1 of 0.929 across all 38 classes.
+
+## LLM declaration
+
+Claude Opus 4.7 was used to structure and systemize this README's
+documentation. All content is our own.
