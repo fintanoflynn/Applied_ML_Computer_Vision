@@ -49,7 +49,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
         num_workers=2
     )
     
-    model = build_resnet18(num_classes=len(train_ds.classes), finetune_mode=finetune_mode)
+    model = build_resnet18(num_classes=len(train_ds.classes), finetune_mode=finetune_mode, dropout=dropout)
     model = model.to(device)
     
     class_weights = compute_class_weights(train_ds, device)
