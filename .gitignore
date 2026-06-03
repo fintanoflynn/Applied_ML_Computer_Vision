@@ -11,3 +11,13 @@ __pycache__/
 # Downloaded/generated data
 data/raw/
 data/processed/
+
+# Trained model checkpoints (heavy, regenerable)
+models/*.pth
+models/*.pt
+models/*.joblib
+models/*.pkl
+/models/*
+!/models/.gitkeep
+.DS_Store
+uv.lock

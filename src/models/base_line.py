@@ -1,14 +1,14 @@
-"""A baseline model implemented using logistic regression on grayscale images."""
-
-from pathlib import Path
-
+"""Logistic regression baseline for PlantVillage grayscale images."""
 import numpy as np
+import matplotlib.pyplot as plt
+import joblib
+
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
-
+from pathlib import Path
 
 class GreyScale:
     def __init__(self) -> None:
@@ -20,21 +20,14 @@ class GreyScale:
     def load_data(self) -> None:
         project_root = Path(__file__).resolve().parents[2]
 
-        grayscale_dir = (
-            project_root
-            / "data"
-            / "raw"
-            / "plantvillage"
-            / "plantvillage dataset"
-            / "grayscale"
-        )
+        raw_dir = project_root / "data" / "raw"
 
         X = []
         y = []
 
-        image_size = (64,64)
+        image_size = (32, 32)
 
-        for class_folder in grayscale_dir.iterdir():
+        for class_folder in raw_dir.iterdir():
             if not class_folder.is_dir():
                 continue
 
@@ -44,11 +37,11 @@ class GreyScale:
                 if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
                     continue
 
-                image = Image.open(image_path).convert("L")
+                # Open as RGB then convert to grayscale
+                image = Image.open(image_path).convert("RGB").convert("L")
                 image = image.resize(image_size)
 
                 pixels = np.array(image, dtype=np.float32).flatten()
-
                 pixels = pixels / 255.0
 
                 X.append(pixels)
@@ -65,7 +58,7 @@ class GreyScale:
             stratify=y,
         )
 
-        print("Data loaded successfully.")
+        print("Loaded data.")
         print(f"Total images: {len(X)}")
         print(f"Feature shape: {X.shape}")
         print(f"Training set: {self.X_train.shape}")
@@ -97,24 +90,31 @@ class RegressionModel(GreyScale):
         print("Classification Report:")
         print(report)
 
+    def save_model(self, path: Path) -> None:
+        """Provide path with .joblib extension"""
+        joblib.dump(self.model, path)
+        print(f"Model saved to {path}")
 
-class Regression_PCA(RegressionModel):
-    def __init__(self, n_components=50) -> None:
+
+class RegressionPCA(RegressionModel):
+    def __init__(self, n_components) -> None:
         super().__init__()
         self.n_components = n_components
         self.pca = PCA(n_components=self.n_components)
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
-            raise ValueError("Data has not been loaded.")
+            raise ValueError("Error with loading the data.")
+        
+        print(f"Training PCA model with n_components={self.n_components}")
 
         X_train_pca = self.pca.fit_transform(self.X_train)
         self.model.fit(X_train_pca, self.y_train)
-        print("Model has been trained with PCA.")
+        print("PCA model is finished training.")
 
     def evaluate(self) -> None:
         if self.X_test is None or self.y_test is None:
-            raise ValueError("Data has not been loaded.")
+            raise ValueError("Error with loading the data.")
 
         X_test_pca = self.pca.transform(self.X_test)
         y_pred = self.model.predict(X_test_pca)
@@ -125,9 +125,46 @@ class Regression_PCA(RegressionModel):
         print("Classification Report:")
         print(report)
 
-if __name__ == "__main__":
-    model = RegressionModel()
+   
+    def scree_plot(self, max_components=300) -> None:
+        if self.X_train is None:
+            raise ValueError("Data has not been loaded.")
 
+        max_components = min(max_components, self.X_train.shape[1])
+
+        pca = PCA(n_components=max_components)
+        pca.fit(self.X_train)
+
+        explained_variance = pca.explained_variance_ratio_
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(
+            range(1, max_components + 1),
+            explained_variance,
+            marker="o",
+            linestyle="-"
+        )
+        plt.title("Scree Plot")
+        plt.xlabel("Dimension")
+        plt.ylabel("Explained Variance Ratio")
+        plt.grid(True)
+        plt.show()
+
+    def save_model(self, path: Path) -> None:
+        """Provide path with .joblib extension"""
+        model_artifact = {
+            "model": self.model,
+            "pca": self.pca,
+        }
+        joblib.dump(model_artifact, path)
+        print(f"Model and PCA saved to {path}")
+
+if __name__ == "__main__":
+   
+    print("PCA Regression Model","="*50)
+    model = RegressionPCA(n_components=50)
     model.load_data()
     model.train()
     model.evaluate()
+    model.scree_plot()
+    model.save_model(Path("models/logistic_regression_pca_50.joblib"))
