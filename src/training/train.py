@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import shutil
+from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader
 from src.data.dataset import stratified_splits
 from src.data.transforms import build_train_transform, build_eval_transform
@@ -65,7 +66,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
         T_max=num_epochs
     )
     
-    best_val_acc = 0.0
+    best_val_macro_f1 = 0.0
     patience_counter = 0
     patience = 5
     
@@ -105,6 +106,9 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
         val_correct = 0
         val_total = 0
         
+        val_preds = []
+        val_true = []
+        
         with torch.no_grad():
             for images, labels in val_loader:
                 images = images.to(device)
@@ -116,24 +120,32 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
                 val_loss += loss.item() * images.size(0)
                 val_correct += (outputs.argmax(dim=1) == labels).sum().item()
                 val_total += images.size(0)
+                
+                val_preds.extend(outputs.argmax(dim=1).cpu().numpy())
+                val_true.extend(labels.cpu().numpy())
         
         val_loss = val_loss / val_total
         val_acc = val_correct / val_total
+        
+        val_macro_f1 = f1_score(val_true, val_preds, average="macro")
         
         scheduler.step()
         
         print(f"Epoch {epoch:02d}/{num_epochs} | "
               f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
-              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
+              f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
+              f"val_macro_f1={val_macro_f1:.4f}"
+              )
         
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        if val_macro_f1 > best_val_macro_f1:
+            best_val_macro_f1 = val_macro_f1
             patience_counter = 0
             torch.save({
                 "epoch": epoch,
                 "model_state": model.state_dict(),
                 "optimiser_state": optimiser.state_dict(),
                 "val_acc": val_acc,
+                "val_macro_f1": val_macro_f1,
                 "classes": train_ds.classes
             }, "checkpoints/resnet18_best.pt")
             
@@ -141,7 +153,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
             if os.path.exists("/content/drive/MyDrive"):
                 shutil.copy("checkpoints/resnet18_best.pt", drive_path)
                 print(f"Checkpoint saved to Drive folder")
-            print(f"New best validation accurcy={val_acc:.4f} - model saved")
+            print(f"New best validation macro f1={val_macro_f1:.4f} - model saved")
 
         else:
             patience_counter += 1
@@ -150,5 +162,5 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
                 print("Early stopping triggered.")
                 break
             
-    print(f"\nTraining complete. Best validation accuracy={best_val_acc:.4f}")
-    return best_val_acc
+    print(f"\nTraining complete. Best validation macro f1={best_val_macro_f1:.4f}")
+    return best_val_macro_f1
