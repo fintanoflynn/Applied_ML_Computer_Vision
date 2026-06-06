@@ -17,7 +17,7 @@ from typing import Annotated, Literal
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Path as PathParam, Query, UploadFile, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from app import config
 from app.classes import CLASS_NAMES, NUM_CLASSES, humanise
@@ -229,35 +229,69 @@ def _predict_with_topk(predictor: Predictor, image_bytes: bytes, k: int) -> Pred
 # --------------------------------------------------------------------------- #
 
 
-_MODEL_BLURBS: dict[str, tuple[str, str]] = {
-    "resnet": ("ResNet-18 (transfer learning)", "Test accuracy 92.84%"),
-    "cnn":    ("CNN from scratch",              "Validation macro-F1 0.989"),
-    "baseline": ("Logistic regression baseline", "Grayscale 32x32"),
+_MODEL_BLURBS: dict[str, str] = {
+    "resnet": "ResNet-18",
+    "cnn": "CNN from scratch",
+    "baseline": "Logistic regression baseline",
 }
 
 
-def _render_landing_html(loaded: list[str]) -> str:
+def _render_landing_html(
+    loaded: list[str],
+    cam_models: list[str],
+    metrics: dict[str, tuple[tuple[str, str], ...]] | None = None,
+) -> str:
+    metrics = metrics or {}
     if not loaded:
         cards = (
             "<p class='empty'>No models are loaded. Drop a checkpoint into "
             "<code>models/</code> and restart the server.</p>"
         )
     else:
-        cards = "\n".join(_render_card(name) for name in loaded)
+        cards = "\n".join(
+            _render_card(
+                name,
+                supports_cam=name in cam_models,
+                metrics=metrics.get(name, ()),
+            )
+            for name in loaded
+        )
     return _LANDING_TEMPLATE.replace("{{CARDS}}", cards)
 
 
-def _render_card(model_type: str) -> str:
-    title, subtitle = _MODEL_BLURBS.get(model_type, (model_type.title(), ""))
+def _render_card(
+    model_type: str,
+    supports_cam: bool = False,
+    metrics: tuple[tuple[str, str], ...] = (),
+) -> str:
+    title = _MODEL_BLURBS.get(model_type, model_type.title())
+    # The model's own held-out metrics (accuracy / macro-F1), read from its
+    # checkpoint. Shown as small stat chips so users see how the model scores.
+    metrics_html = ""
+    if metrics:
+        chips = "".join(
+            f"<span class='stat'><b>{value}</b> {label}</span>" for label, value in metrics
+        )
+        metrics_html = f"  <div class='stats'>{chips}</div>"
+    # Grad-CAM only applies to the convolutional models;
+    cam_checkbox = (
+        f"    <label class='cam-toggle'>"
+        f"<input type='checkbox' name='gradcam'> Show Grad-CAM (where the model looked)"
+        f"</label>"
+        if supports_cam
+        else ""
+    )
     return (
         f"<section class='card' data-model='{model_type}'>"
         f"  <h2>{title}</h2>"
-        f"  <p class='subtitle'>{subtitle}</p>"
+        f"{metrics_html}"
         f"  <form onsubmit='predict(event, \"{model_type}\")'>"
         f"    <input type='file' name='file' accept='image/jpeg,image/png' required>"
+        f"{cam_checkbox}"
         f"    <button type='submit'>Classify with {model_type}</button>"
         f"  </form>"
         f"  <div class='result' id='result-{model_type}'></div>"
+        f"  <img class='cam' id='cam-{model_type}' alt='Grad-CAM overlay' hidden>"
         f"</section>"
     )
 
@@ -273,15 +307,23 @@ _LANDING_TEMPLATE = """<!doctype html>
  .lede { color: #555; margin-top: 0; }
  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
  .card { border: 1px solid #ddd; border-radius: 8px; padding: 1.25rem; background: #fafafa; }
- .card h2 { margin: 0 0 0.25rem; font-size: 1.15rem; }
- .subtitle { color: #666; margin: 0 0 1rem; font-size: 0.9rem; }
+ .card h2 { margin: 0 0 0.6rem; font-size: 1.15rem; }
+ .stats { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+ .stat { background: #eef2ff; color: #3730a3; border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+ .stat b { font-weight: 700; }
  input[type=file] { display: block; margin-bottom: 0.75rem; width: 100%; }
  button { padding: 0.5rem 1rem; border: 0; background: #2563eb; color: white; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
  button:hover { background: #1d4ed8; }
  .result { margin-top: 1rem; font-size: 0.92rem; }
  .result .top { font-weight: 600; font-size: 1.05rem; }
- .result ul { padding-left: 1.25rem; margin: 0.4rem 0 0; }
+ .result .confidence { margin-top: 0.2rem; color: #166534; font-weight: 600; }
+ .result .others { margin-top: 0.6rem; color: #666; font-size: 0.85rem; }
+ .result ul { padding-left: 1.25rem; margin: 0.25rem 0 0; }
  .result.error { color: #b91c1c; }
+ .cam-toggle { display: block; margin-bottom: 0.75rem; font-size: 0.88rem; color: #444; cursor: pointer; }
+ .cam-toggle input { margin-right: 0.4rem; }
+ img.cam { display: block; margin-top: 0.75rem; max-width: 100%; border-radius: 6px; border: 1px solid #ddd; }
+ .cam-caption { font-size: 0.8rem; color: #666; margin: 0.3rem 0 0; }
  .links { margin-top: 2rem; font-size: 0.9rem; color: #555; }
  .links a { color: #2563eb; text-decoration: none; margin-right: 1rem; }
  .links a:hover { text-decoration: underline; }
@@ -307,8 +349,11 @@ async function predict(event, modelType) {
   const form = event.target;
   const fd = new FormData(form);
   const result = document.getElementById('result-' + modelType);
+  const cam = document.getElementById('cam-' + modelType);
+  const wantCam = form.gradcam && form.gradcam.checked;
   result.classList.remove('error');
   result.innerText = 'Classifying...';
+  if (cam) { cam.hidden = true; }
   try {
     const resp = await fetch('/predict/' + modelType + '?top_k=3', { method: 'POST', body: fd });
     const data = await resp.json();
@@ -318,18 +363,42 @@ async function predict(event, modelType) {
       return;
     }
     const top = data.top_prediction;
-    let html = "<div class='top'>" + top.plant + " — " + top.condition +
-               " (" + (top.probability * 100).toFixed(1) + "%)</div>";
-    html += '<ul>';
-    for (const p of data.top_k.slice(1)) {
-      html += '<li>' + p.plant + ' — ' + p.condition +
-              ' (' + (p.probability * 100).toFixed(1) + '%)</li>';
+    let html = "<div class='top'>" + top.plant + " — " + top.condition + "</div>";
+    html += "<div class='confidence'>Confidence: " +
+            (top.probability * 100).toFixed(1) + "%</div>";
+    if (data.top_k.length > 1) {
+      html += "<div class='others'>Other likely classes:</div><ul>";
+      for (const p of data.top_k.slice(1)) {
+        html += '<li>' + p.plant + ' — ' + p.condition +
+                ' (' + (p.probability * 100).toFixed(1) + '%)</li>';
+      }
+      html += '</ul>';
     }
-    html += '</ul>';
     result.innerHTML = html;
+    if (wantCam && cam) { await showGradcam(modelType, fd, result); }
   } catch (e) {
     result.classList.add('error');
     result.innerText = 'Request failed: ' + e;
+  }
+}
+
+async function showGradcam(modelType, fd, result) {
+  const cam = document.getElementById('cam-' + modelType);
+  try {
+    const resp = await fetch('/gradcam/' + modelType, { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      result.innerHTML += "<p class='cam-caption'>Grad-CAM unavailable: " +
+                          (data.detail || ('error ' + resp.status)) + '</p>';
+      return;
+    }
+    const blob = await resp.blob();
+    cam.src = URL.createObjectURL(blob);
+    cam.hidden = false;
+    result.innerHTML += "<p class='cam-caption'>Grad-CAM: red = regions that most " +
+                        'drove the prediction.</p>';
+  } catch (e) {
+    result.innerHTML += "<p class='cam-caption'>Grad-CAM request failed: " + e + '</p>';
   }
 }
 </script>
@@ -340,8 +409,11 @@ async function predict(event, modelType) {
 @app.get("/", include_in_schema=False, response_class=HTMLResponse)
 async def root() -> HTMLResponse:
     """Landing page with one upload form per loaded model."""
-    loaded = list(app.state.predictors.keys())
-    return HTMLResponse(_render_landing_html(loaded))
+    predictors: dict[str, Predictor] = app.state.predictors
+    loaded = list(predictors.keys())
+    cam_models = [name for name, p in predictors.items() if p.supports_gradcam]
+    metrics = {name: p.metrics for name, p in predictors.items()}
+    return HTMLResponse(_render_landing_html(loaded, cam_models, metrics))
 
 
 @app.get(
@@ -516,3 +588,90 @@ async def predict_with_model(
     predictor = _require_predictor(model_type)
     image_bytes = await _read_image_upload(file)
     return _predict_with_topk(predictor, image_bytes, k=top_k)
+
+
+@app.post(
+    "/gradcam/{model_type}",
+    summary="Grad-CAM explanation for a prediction",
+    tags=["predictions"],
+    responses={
+        200: {
+            "description": "PNG image: the input leaf with a Grad-CAM heatmap "
+            "overlaid, highlighting the regions the model used. The explained "
+            "class label is returned in the `X-Predicted-Class` response header.",
+            "content": {"image/png": {}},
+        },
+        400: _error_response(
+            "Grad-CAM unavailable for this model.",
+            "Grad-CAM is not available for the 'baseline' model: it has no "
+            "convolutional layers to visualise. Use 'resnet' or 'cnn'.",
+        ),
+        404: _error_response(
+            "Unknown model_type.",
+            "Unknown model_type 'foo'. Supported: resnet, cnn, baseline.",
+        ),
+        413: _error_response(
+            "File too large.",
+            f"Uploaded file is 15728640 bytes, which exceeds the "
+            f"{config.MAX_UPLOAD_BYTES}-byte limit.",
+        ),
+        415: _error_response(
+            "Unsupported content type.",
+            "Unsupported content type 'application/pdf'. Send a JPEG or PNG "
+            "image (image/jpeg, image/png).",
+        ),
+        422: _error_response(
+            "Image could not be decoded.",
+            "Uploaded file is not a readable image. Supported formats: JPEG, PNG.",
+        ),
+        503: _error_response(
+            "Requested model not loaded.",
+            "Model 'cnn' is not loaded on this server. Loaded models: ['resnet'].",
+        ),
+    },
+)
+async def gradcam(
+    model_type: Annotated[
+        ModelType,
+        PathParam(description="Which conv model to explain: 'resnet' or 'cnn'."),
+    ],
+    file: Annotated[
+        UploadFile,
+        File(description="A JPEG or PNG photo of a single leaf."),
+    ],
+) -> Response:
+    """Return a Grad-CAM overlay explaining the model's top prediction.
+
+    Grad-CAM highlights the image regions that most drove the predicted class —
+    useful for checking the model attends to leaf lesions rather than the
+    background. Only the convolutional models (`resnet`, `cnn`) are supported;
+    the logistic-regression `baseline` has no spatial feature maps to visualise
+    and returns **400**.
+
+    **Response:** a `image/png` overlay. The explained class label is returned
+    in the `X-Predicted-Class` header.
+    """
+    predictor = _require_predictor(model_type)
+    if not predictor.supports_gradcam:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Grad-CAM is not available for the {model_type!r} model: it has "
+                f"no convolutional layers to visualise. Use 'resnet' or 'cnn'."
+            ),
+        )
+
+    image_bytes = await _read_image_upload(file)
+    try:
+        png_bytes, class_idx = predictor.gradcam(image_bytes)
+    except InvalidImageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"X-Predicted-Class": CLASS_NAMES[class_idx]},
+    )

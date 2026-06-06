@@ -19,10 +19,13 @@ import torch.nn.functional as F
 
 from app import config
 from app.classes import CLASS_NAMES, NUM_CLASSES
+from app.gradcam import compute_gradcam, overlay_heatmap
 from app.preprocessing import (
     BASELINE_INPUT_SIZE,
     CNN_INPUT_SIZE,
     RESNET_INPUT_SIZE,
+    display_image_for_cnn,
+    display_image_for_resnet,
     preprocess_for_baseline,
     preprocess_for_cnn,
     preprocess_for_resnet,
@@ -46,10 +49,54 @@ class Predictor:
     device: str
     input_size: tuple[int, int]
     _predict_proba_fn: Callable[[bytes], np.ndarray]
+    # Grad-CAM closure: (image_bytes, class_idx | None) -> (png_bytes, class_idx).
+    # Set for the convolutional models (resnet, cnn); ``None`` for the baseline.
+    _gradcam_fn: Callable[[bytes, int | None], tuple[bytes, int]] | None = None
+    # Held-out evaluation metrics this model actually carries, read from its
+    # checkpoint at load time — (label, formatted_value) pairs, e.g.
+    # ("Validation accuracy", "92.25%"). Empty if the checkpoint stored none.
+    metrics: tuple[tuple[str, str], ...] = ()
 
     def predict_proba(self, image_bytes: bytes) -> np.ndarray:
         """Return a 1-D ``(num_classes,)`` array of class probabilities."""
         return self._predict_proba_fn(image_bytes)
+
+    @property
+    def supports_gradcam(self) -> bool:
+        return self._gradcam_fn is not None
+
+    def gradcam(self, image_bytes: bytes, class_idx: int | None = None) -> tuple[bytes, int]:
+        """Return ``(png_bytes, explained_class_idx)`` for a Grad-CAM overlay.
+
+        ``class_idx=None`` explains the model's own top prediction.
+        """
+        if self._gradcam_fn is None:
+            raise ModelNotLoadedError(
+                f"Grad-CAM is not available for the {self.model_type!r} model."
+            )
+        return self._gradcam_fn(image_bytes, class_idx)
+
+
+def _extract_metrics(checkpoint: object) -> tuple[tuple[str, str], ...]:
+    """Pull the held-out metrics a checkpoint stored into display pairs.
+
+    Reads only the metric keys our training scripts actually write
+    (``train.py`` -> ``val_acc`` / ``val_macro_f1``; ``train_cnn.py`` ->
+    ``best_val_macro_f1``). Missing keys are simply skipped, so we never invent
+    a number a model does not carry.
+    """
+    if not isinstance(checkpoint, dict):
+        return ()
+    pairs: list[tuple[str, str]] = []
+    acc = checkpoint.get("val_acc")
+    if isinstance(acc, (int, float)):
+        pairs.append(("Validation accuracy", f"{acc * 100:.2f}%"))
+    macro_f1 = checkpoint.get("val_macro_f1")
+    if macro_f1 is None:
+        macro_f1 = checkpoint.get("best_val_macro_f1")
+    if isinstance(macro_f1, (int, float)):
+        pairs.append(("Validation macro-F1", f"{macro_f1:.3f}"))
+    return tuple(pairs)
 
 
 def _load_cnn(checkpoint_path: Path) -> Predictor:
@@ -95,12 +142,26 @@ def _load_cnn(checkpoint_path: Path) -> Predictor:
             probs = F.softmax(logits, dim=1).cpu().numpy()[0]
         return probs
 
+    # Last conv block (Conv->BN->ReLU->MaxPool, 256 channels) — the deepest,
+    # most class-discriminative feature map the CNN produces.
+    cam_target_layer = model.feature_extractor[-1]
+
+    def _gradcam(image_bytes: bytes, class_idx: int | None) -> tuple[bytes, int]:
+        tensor = preprocess_for_cnn(image_bytes).to(device)
+        if mean is not None:
+            tensor = (tensor - mean) / std
+        heatmap, used_idx = compute_gradcam(model, cam_target_layer, tensor, class_idx, device)
+        overlay = overlay_heatmap(display_image_for_cnn(image_bytes), heatmap)
+        return overlay, used_idx
+
     return Predictor(
         model_type="cnn",
         checkpoint_path=checkpoint_path,
         device=device,
         input_size=CNN_INPUT_SIZE,
         _predict_proba_fn=_predict,
+        _gradcam_fn=_gradcam,
+        metrics=_extract_metrics(checkpoint),
     )
 
 
@@ -139,12 +200,24 @@ def _load_resnet(checkpoint_path: Path) -> Predictor:
             probs = F.softmax(logits, dim=1).cpu().numpy()[0]
         return probs
 
+    # Last residual block of layer4 — the standard Grad-CAM target for ResNet,
+    # giving a 7x7x512 feature map at 224px input.
+    cam_target_layer = model.layer4[-1]
+
+    def _gradcam(image_bytes: bytes, class_idx: int | None) -> tuple[bytes, int]:
+        tensor = preprocess_for_resnet(image_bytes).to(device)
+        heatmap, used_idx = compute_gradcam(model, cam_target_layer, tensor, class_idx, device)
+        overlay = overlay_heatmap(display_image_for_resnet(image_bytes), heatmap)
+        return overlay, used_idx
+
     return Predictor(
         model_type="resnet",
         checkpoint_path=checkpoint_path,
         device=device,
         input_size=RESNET_INPUT_SIZE,
         _predict_proba_fn=_predict,
+        _gradcam_fn=_gradcam,
+        metrics=_extract_metrics(checkpoint),
     )
 
 

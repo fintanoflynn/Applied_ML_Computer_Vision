@@ -31,6 +31,10 @@ _RESNET_TRANSFORM = T.Compose([
     T.ToTensor(),
     T.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD),
 ])
+# Same geometry as _RESNET_TRANSFORM but without ToTensor/Normalize: used as the
+# *display* image a Grad-CAM heatmap is overlaid on, so the heatmap (computed at
+# the model's 224x224 input resolution) lines up pixel-for-pixel.
+_RESNET_DISPLAY = T.Compose([T.Resize(256), T.CenterCrop(224)])
 
 
 class InvalidImageError(ValueError):
@@ -70,3 +74,13 @@ def preprocess_for_baseline(image_bytes: bytes) -> np.ndarray:
     image = _open_image(image_bytes).convert("L").resize(BASELINE_INPUT_SIZE)
     pixels = np.asarray(image, dtype=np.float32).flatten() / 255.0
     return pixels.reshape(1, -1)
+
+
+def display_image_for_resnet(image_bytes: bytes) -> Image.Image:
+    """RGB image at the ResNet input geometry (224x224), for Grad-CAM overlay."""
+    return _RESNET_DISPLAY(_open_image(image_bytes).convert("RGB"))
+
+
+def display_image_for_cnn(image_bytes: bytes) -> Image.Image:
+    """RGB image at the CNN input geometry (256x256), for Grad-CAM overlay."""
+    return _open_image(image_bytes).convert("RGB").resize(CNN_INPUT_SIZE)

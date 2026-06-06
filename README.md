@@ -136,8 +136,32 @@ Response (truncated):
 | `GET`  | `/model`                   | Metadata about the default model.                      |
 | `POST` | `/predict`                 | Classify a leaf image with the default model.          |
 | `POST` | `/predict/{model_type}`    | Classify a leaf image with `resnet`, `cnn`, or `baseline`. |
+| `POST` | `/gradcam/{model_type}`    | Grad-CAM overlay (PNG) explaining a `resnet`/`cnn` prediction. |
 
-## 7. Evidence of model performance above random guessing
+## 7. Grad-CAM explanations (model interpretability)
+
+The convolutional models (`resnet`, `cnn`) expose a Grad-CAM endpoint that
+overlays a heatmap on the leaf, showing which regions drove the prediction.
+This is integrated into the **live demo** (a *Show Grad-CAM* checkbox on each
+model card), not just a notebook figure. The baseline (logistic regression) has
+no convolutional feature maps, so Grad-CAM does not apply to it.
+
+```bash
+# Returns an image/png overlay; the explained class is in the X-Predicted-Class header.
+curl -X POST "http://127.0.0.1:8000/gradcam/resnet" \
+     -F "file=@path/to/leaf.jpg" -o gradcam.png -D -
+```
+
+To generate the static figure used in the report (tests whether the model
+attends to lesions vs. the studio background — the generalisation concern from
+the proposal):
+
+```bash
+.venv/Scripts/python -m src.explain.gradcam_report --model resnet --num 8
+# -> figures/gradcam/resnet_gradcam.png
+```
+
+## 8. Evidence of model performance above random guessing
 
 The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 `src/training/evaluate.py`:
