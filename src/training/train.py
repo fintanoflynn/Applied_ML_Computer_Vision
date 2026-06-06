@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import shutil
@@ -17,9 +18,10 @@ def compute_class_weights(dataset, device):
     return torch.tensor(weights, dtype=torch.float32).to(device)
 
 
-def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetune_mode="head_only", seed=42):
+def train(data_root, num_epochs=30, lr=1e-4, batch_size=64,
+          dropout=0.3, weight_decay=1e-4, augmentation="light",
+          finetune_mode="head_only", seed=42):    
     
-    import os
     os.makedirs('checkpoints', exist_ok=True)
     
     set_seed(seed)
@@ -29,7 +31,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
     
     train_ds, val_ds, test_ds = stratified_splits(
         data_root,
-        train_transform=build_train_transform(),
+        train_transform=build_train_transform(augmentation=augmentation),
         eval_transform=build_eval_transform()
     )
     
@@ -49,7 +51,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
         num_workers=2
     )
     
-    model = build_resnet18(num_classes=len(train_ds.classes), finetune_mode=finetune_mode)
+    model = build_resnet18(num_classes=len(train_ds.classes), finetune_mode=finetune_mode, dropout=dropout)
     model = model.to(device)
     
     class_weights = compute_class_weights(train_ds, device)
@@ -58,7 +60,7 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64, dropout=0.3, finetun
     optimiser = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=lr,
-        weight_decay=1e-4
+        weight_decay=weight_decay
     )
     
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(

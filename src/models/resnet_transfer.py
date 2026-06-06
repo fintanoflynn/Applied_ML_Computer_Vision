@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-def build_resnet18(num_classes: int = 38, finetune_mode: str = "head_only"):
+def build_resnet18(num_classes: int = 38, finetune_mode: str = "head_only", dropout: float = 0.3):
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
     
     for param in model.parameters():
@@ -13,7 +13,7 @@ def build_resnet18(num_classes: int = 38, finetune_mode: str = "head_only"):
             param.requires_grad = True
             
     in_features = model.fc.in_features
-    model.fc = nn.Sequential(nn.Dropout(p=0.3), nn.Linear(in_features, num_classes))
+    model.fc = nn.Sequential(nn.Dropout(p=dropout), nn.Linear(in_features, num_classes))
     
     return model
 
