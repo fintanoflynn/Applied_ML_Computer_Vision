@@ -38,7 +38,7 @@ class GreyScale:
                     continue
 
                 # Open as RGB then convert to grayscale
-                image = Image.open(image_path).convert("RGB").convert("L")
+                image = Image.open(image_path).convert("RGB")
                 image = image.resize(image_size)
 
                 pixels = np.array(image, dtype=np.float32).flatten()
@@ -69,7 +69,7 @@ class GreyScale:
 class RegressionModel(GreyScale):
     def __init__(self) -> None:
         super().__init__()
-        self.model = LogisticRegression(max_iter=1000) #classweight='balanced' 
+        self.model = LogisticRegression(max_iter=3000, class_weight='balanced', solver="lbfgs")
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
@@ -160,11 +160,10 @@ class RegressionPCA(RegressionModel):
         print(f"Model and PCA saved to {path}")
 
 if __name__ == "__main__":
-   
     print("PCA Regression Model","="*50)
-    model = RegressionPCA(n_components=50)
+    model = RegressionPCA(n_components=200)
     model.load_data()
     model.train()
     model.evaluate()
     model.scree_plot()
-    model.save_model(Path("models/logistic_regression_pca_50.joblib"))
+    model.save_model(Path("models/logistic_regression.joblib"))
