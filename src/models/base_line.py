@@ -1,4 +1,4 @@
-"""Logistic regression baseline for PlantVillage grayscale images."""
+"""PCA Logistic regression baseline for PlantVillage grayscale images."""
 import numpy as np
 import matplotlib.pyplot as plt
 import joblib
@@ -9,6 +9,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
 from pathlib import Path
+from sklearn.metrics import ConfusionMatrixDisplay
 
 class GreyScale:
     def __init__(self) -> None:
@@ -37,8 +38,7 @@ class GreyScale:
                 if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
                     continue
 
-                # Open as RGB then convert to grayscale
-                image = Image.open(image_path).convert("RGB")
+                image = Image.open(image_path).convert("L")
                 image = image.resize(image_size)
 
                 pixels = np.array(image, dtype=np.float32).flatten()
@@ -64,12 +64,12 @@ class GreyScale:
         print(f"Training set: {self.X_train.shape}")
         print(f"Testing set: {self.X_test.shape}")
         print(f"Number of classes: {len(np.unique(y))}")
-
+        
 
 class RegressionModel(GreyScale):
     def __init__(self) -> None:
         super().__init__()
-        self.model = LogisticRegression(max_iter=3000, class_weight='balanced', solver="lbfgs")
+        self.model = LogisticRegression(max_iter=3000, class_weight='balanced')
 
     def train(self) -> None:
         if self.X_train is None or self.y_train is None:
@@ -118,36 +118,68 @@ class RegressionPCA(RegressionModel):
 
         X_test_pca = self.pca.transform(self.X_test)
         y_pred = self.model.predict(X_test_pca)
+
         accuracy = accuracy_score(self.y_test, y_pred)
-        report = classification_report(self.y_test, y_pred)
+        report = classification_report(self.y_test, y_pred, zero_division=0)
 
         print(f"Accuracy: {accuracy:.4f}")
         print("Classification Report:")
         print(report)
 
-   
     def scree_plot(self, max_components=300) -> None:
         if self.X_train is None:
             raise ValueError("Data has not been loaded.")
-
-        max_components = min(max_components, self.X_train.shape[1])
 
         pca = PCA(n_components=max_components)
         pca.fit(self.X_train)
 
         explained_variance = pca.explained_variance_ratio_
+        cumulative_variance = np.cumsum(explained_variance)
 
         plt.figure(figsize=(8, 5))
         plt.plot(
             range(1, max_components + 1),
-            explained_variance,
+            cumulative_variance,
             marker="o",
             linestyle="-"
         )
-        plt.title("Scree Plot")
-        plt.xlabel("Dimension")
-        plt.ylabel("Explained Variance Ratio")
+    
+        plt.axhline(y=0.90, linestyle="--", label="90% variance")
+        plt.axhline(y=0.95, linestyle="--", label="95% variance")
+        plt.title("Cumulaticed explained variance ratio by PCA components")
+        plt.xlabel("Number of components")
+        plt.ylabel("Cumulative explained variance")
+        plt.legend()
         plt.grid(True)
+        plt.show()
+
+    def confusion_matrix_plot(self) -> None:
+        if self.X_test is None or self.y_test is None:
+            raise ValueError("Error with loading the data.")
+
+        X_test_pca = self.pca.transform(self.X_test)
+        y_pred = self.model.predict(X_test_pca)
+
+        labels = self.model.classes_
+        display_labels = [cls.replace("_", " ").title() for cls in labels]
+
+        fig, ax = plt.subplots(figsize=(20, 20))
+
+        ConfusionMatrixDisplay.from_predictions(
+            self.y_test,
+            y_pred,
+            labels=labels,
+            display_labels=display_labels,
+            normalize="true",
+            xticks_rotation=90,
+            include_values=False,
+            ax=ax, 
+        )
+
+        ax.set_title("Normalized Confusion Matrix", fontsize=18)
+        ax.tick_params(axis="x", labelsize=6)
+        ax.tick_params(axis="y", labelsize=6)
+
         plt.show()
 
     def save_model(self, path: Path) -> None:
@@ -160,10 +192,15 @@ class RegressionPCA(RegressionModel):
         print(f"Model and PCA saved to {path}")
 
 if __name__ == "__main__":
-    print("PCA Regression Model","="*50)
+    print("PCA Logistic Regression Model", "=" * 50)
+
     model = RegressionPCA(n_components=200)
+
     model.load_data()
     model.train()
     model.evaluate()
+
     model.scree_plot()
+    model.confusion_matrix_plot()
+
     model.save_model(Path("models/logistic_regression.joblib"))
