@@ -23,7 +23,7 @@ class PlantVillageDataset(Dataset):
 
         return image, label
 
-root = Path("data/raw/plantvillage/plantvillage dataset/color")
+root = Path("data/raw")
 
 classes = sorted(folder.name for folder in root.iterdir() if folder.is_dir())
 

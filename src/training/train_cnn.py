@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import json
 import math
 
 import torch
@@ -7,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix as sk_confusion_matrix
 
 from src.data.color_dataset import PlantVillageDataset, image_paths_and_labels, classes
 from src.models.cnn_scratch import CNN
@@ -16,10 +17,12 @@ from src.models.cnn_scratch import CNN
 BATCH_SIZE = 64
 EPOCHS = 30
 PATIENCE = 5
-LEARNING_RATE = 1e-3
-WEIGHT_DECAY = 1e-4
+LEARNING_RATE = 0.0034872501292583704
+WEIGHT_DECAY = 0.001
+AUG_STRENGTH = "light"
 RANDOM_SEED = 42
 MODEL_SAVE_PATH = Path("models/cnn_scratch.pth")
+HISTORY_SAVE_PATH = Path("models/cnn_scratch_history.json")
 
 
 def split_data(samples):
@@ -45,20 +48,11 @@ def split_data(samples):
 
 
 def compute_mean_std(train_samples):
-    basic_transform = transforms.Compose(
-        [
-            transforms.Resize((224, 224)), 
-            transforms.ToTensor(),
-         ]
-    )
+    basic_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 
     dataset = PlantVillageDataset(train_samples, transform=basic_transform)
 
-    loader = DataLoader(
-        dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False
-    )
+    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     mean = torch.zeros(3)
     total_pixels = 0
@@ -80,16 +74,18 @@ def compute_mean_std(train_samples):
     return mean, std
 
 
-def make_transforms(mean, std):
+def make_transforms(mean, std, aug_strength: str = "medium"):
+    jitter = {"light": 0.1, "medium": 0.2, "heavy": 0.3}[aug_strength]
+
     train_transform = transforms.Compose(
         [
             transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(15),
             transforms.ColorJitter(
-                brightness=0.2,
-                contrast=0.2,
-                saturation=0.2,
+                brightness=jitter,
+                contrast=jitter,
+                saturation=jitter,
             ),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean.tolist(), std=std.tolist()),
@@ -178,15 +174,18 @@ def evaluate(model, data_loader, loss_fn, device):
             all_labels.extend(labels.cpu().tolist())
 
     average_loss = total_loss / total
-    accuracy = correct / total
-    macro_f1 = f1_score(
-        all_labels,
-        all_predictions,
-        average="macro",
-        zero_division=0,
-    )
 
-    return average_loss, accuracy, macro_f1
+    accuracy = correct / total
+
+    per_class_f1 = f1_score(all_labels, all_predictions, average=None, zero_division=0)
+    per_class_precision = precision_score(all_labels, all_predictions, average=None, zero_division=0)
+    per_class_recall = recall_score(all_labels, all_predictions, average=None, zero_division=0)
+
+    confusion_matrix = sk_confusion_matrix(all_labels, all_predictions)
+
+    macro_f1 = f1_score(all_labels, all_predictions, average="macro", zero_division=0)
+
+    return average_loss, accuracy, macro_f1, per_class_f1, per_class_precision, per_class_recall, confusion_matrix
 
 
 def save_checkpoint(model, mean, std, best_val_f1):
@@ -243,31 +242,19 @@ def main():
     print(f"Training mean: {mean}")
     print(f"Training std: {std}")
 
-    train_transform, eval_transform = make_transforms(mean, std)
+    train_transform, eval_transform = make_transforms(mean, std, AUG_STRENGTH)
 
     train_dataset = PlantVillageDataset(train_samples, transform=train_transform)
     val_dataset = PlantVillageDataset(val_samples, transform=eval_transform)
     test_dataset = PlantVillageDataset(test_samples, transform=eval_transform)
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-    )
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-    )
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False )
 
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-    )
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    model = CNN().to(device)
+    model = CNN(dropout=0.3).to(device)
 
     class_weights = make_class_weights(
         train_samples=train_samples,
@@ -285,15 +272,16 @@ def main():
 
     def lr_lambda(epoch):
         if epoch < 1:
-            return float(epoch + 1)
+            return 0.1
 
-        progress = (epoch - 1) / max(1, EPOCHS - 1)
+        progress = (epoch - 1) / max(1, EPOCHS - 2)
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     best_val_f1 = 0.0
     epochs_without_improvement = 0
+    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "val_f1": []}
 
     for epoch in range(EPOCHS):
         train_loss, train_acc = train_one_epoch(
@@ -304,7 +292,7 @@ def main():
             device,
         )
 
-        val_loss, val_acc, val_f1 = evaluate(
+        val_loss, val_acc, val_f1, _, _, _, _ = evaluate(
             model,
             val_loader,
             loss_fn,
@@ -312,6 +300,12 @@ def main():
         )
 
         scheduler.step()
+
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
+        history["val_f1"].append(val_f1)
 
         print(
             f"Epoch {epoch + 1}/{EPOCHS} | "
@@ -336,11 +330,15 @@ def main():
             print("Early stopping triggered.")
             break
 
+    HISTORY_SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(HISTORY_SAVE_PATH, "w") as f:
+        json.dump(history, f, indent=2)
+
     print("Training finished.")
 
     best_model = load_best_model(device)
 
-    test_loss, test_acc, test_f1 = evaluate(
+    test_loss, test_acc, test_f1, _, _, _, _ = evaluate(
         best_model,
         test_loader,
         loss_fn,

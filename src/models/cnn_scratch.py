@@ -12,10 +12,9 @@ class CNN(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
     
-    def __init__(self):
+    def __init__(self, dropout: float = 0.3):
         super(CNN, self).__init__()
-        
-        # 4 convolutional blocks with increasing number of filters
+
         self.feature_extractor = nn.Sequential(
             self._conv_block(3, 32),
             self._conv_block(32, 64),
@@ -26,7 +25,7 @@ class CNN(nn.Module):
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
         self.classifier = nn.Sequential(
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=dropout),
             nn.Linear(256, 38),
         )
 

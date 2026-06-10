@@ -72,6 +72,14 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64,
     patience_counter = 0
     patience = 5
     
+    history = {
+        "train_loss": [],
+        "train_acc": [],
+        "val_loss": [],
+        "val_acc": [],
+        "val_macro_f1": []
+    }
+    
     for epoch in range(1, num_epochs + 1):
         
         # ── Training phase ──────────────────────────────────────
@@ -139,6 +147,12 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64,
               f"val_macro_f1={val_macro_f1:.4f}"
               )
         
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
+        history["val_macro_f1"].append(val_macro_f1)
+        
         if val_macro_f1 > best_val_macro_f1:
             best_val_macro_f1 = val_macro_f1
             patience_counter = 0
@@ -165,4 +179,4 @@ def train(data_root, num_epochs=30, lr=1e-4, batch_size=64,
                 break
             
     print(f"\nTraining complete. Best validation macro f1={best_val_macro_f1:.4f}")
-    return best_val_macro_f1
+    return best_val_macro_f1, history
