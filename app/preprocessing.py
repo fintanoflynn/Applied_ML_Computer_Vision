@@ -70,7 +70,7 @@ def preprocess_for_resnet(image_bytes: bytes) -> torch.Tensor:
 
 
 def preprocess_for_baseline(image_bytes: bytes) -> np.ndarray:
-    """Decode bytes → (1, 4096) float array, matching base_line.py's training pipeline."""
+    """Decode bytes → (1, 1024) float array, matching base_line.py's training pipeline."""
     image = _open_image(image_bytes).convert("L").resize(BASELINE_INPUT_SIZE)
     pixels = np.asarray(image, dtype=np.float32).flatten() / 255.0
     return pixels.reshape(1, -1)
