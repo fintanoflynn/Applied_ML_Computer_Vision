@@ -44,6 +44,9 @@ After downloading, place the files in the `models/` directory with these exact n
 | `cnn`      | `models/cnn_scratch.pth` |
 | `baseline` | `models/baseline.joblib` |
 
+There is two trained model that can be found in the google drive relating to the ResNet-18. 
+To be able to use either, you must download the prefer option, and then rename it according to the "Required Filename" as shown above. 
+
 
 ## 3. Provide a trained model checkpoint
 
@@ -175,6 +178,7 @@ The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 | Test accuracy                            | **92.84%** |
 | Test set size                            | 8,146 images |
 | Majority-class baseline accuracy         | **10.14%** (826 / 8,146, *Orange — Citrus greening*) |
+
 
 The model performs far above the majority-class baseline (92.84% vs 10.14%),
 with a weighted F1 of 0.929 across all 38 classes.
