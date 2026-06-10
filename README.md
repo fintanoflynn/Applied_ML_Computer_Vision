@@ -180,7 +180,7 @@ The deployed ResNet-18 transfer model is evaluated on a held-out test split with
 | Majority-class baseline accuracy         | **10.14%** (826 / 8,146, *Orange — Citrus greening*) |
 
 
-The model performs far above the majority-class baseline (92.84% vs 10.14%),
+The model performs far above the majority-class baseline (94.66% vs 10.14%),
 with a weighted F1 of 0.929 across all 38 classes.
 
 ### CNN from scratch performance
@@ -193,7 +193,7 @@ The CNN from scratch model was evaluated on the validation split.
 | Test set size | 8,146 images |
 | Majority-class baseline accuracy | **10.14%** |
 
-The CNN performs above the majority-class baseline: 98.92% vs 10.14%.
+The CNN performs above the majority-class baseline: 99.42% vs 10.14%.
 
 ### Baseline (unbalanced!) cross-validation
 
