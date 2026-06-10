@@ -8,7 +8,7 @@ This repo contains:
 
 * `src/models/resnet_transfer.py` — a ResNet-18 transfer-learning model.
 * `src/models/cnn_scratch.py` — a small CNN trained from scratch in PyTorch.
-* `src/models/base_line.py` — a logistic-regression baseline on 64×64 grayscale.
+* `src/models/base_line.py` — a logistic-regression baseline on 32x32 grayscale.
 * `app/` — a FastAPI service that exposes the trained model as a REST API.
 
 ## 1. Install dependencies
@@ -190,6 +190,29 @@ The CNN from scratch model was evaluated on the validation split.
 | Majority-class baseline accuracy | **10.14%** |
 
 The CNN performs above the majority-class baseline: 98.92% vs 10.14%.
+
+### Baseline (unbalanced!) cross-validation
+
+The PCA + logistic-regression baseline (`src/models/base_line.py`, 50 PCA
+components on 32×32 grayscale) was validated with **5-fold stratified
+cross-validation** on the training split. PCA is re-fit inside each fold (via a
+scikit-learn `Pipeline`) so the validation rows never leak into the PCA basis.
+
+```bash
+.venv/Scripts/python -c "from src.models.base_line import RegressionPCA; m=RegressionPCA(n_components=50); m.load_data(); m.cross_validate(n_splits=5)"
+```
+
+| Metric (mean ± std over 5 folds) | Value |
+|----------------------------------|-------|
+| Accuracy                         | **0.4257 ± 0.0026** |
+| Macro-F1                         | **0.3110 ± 0.0033** |
+| Training set size                | 43,444 images |
+
+The tight standard deviation (~0.003) shows the estimate is stable across folds.
+Accuracy (42.6%) sits well above random guessing (1/38 ≈ 2.6%), confirming the
+baseline learns real signal. The gap between accuracy and macro-F1 reflects
+class imbalance, the baseline scores higher on the larger classes than on the
+rarer ones.
 
 ## LLM declaration
 
