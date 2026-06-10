@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import joblib
 
 from PIL import Image
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_validate, StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
+from sklearn.pipeline import make_pipeline
 from pathlib import Path
 
 class GreyScale:
@@ -126,6 +127,40 @@ class RegressionPCA(RegressionModel):
         print(report)
 
    
+    def cross_validate(self, n_splits=5) -> dict:
+        """Run stratified k-fold CV on the training set.
+
+        PCA is wrapped in a Pipeline so it is re-fit inside each fold (fitting it
+        once on the whole training set would leak validation data into the PCA
+        basis). Reports accuracy and macro-F1 mean +/- std across folds.
+        """
+        if self.X_train is None or self.y_train is None:
+            raise ValueError("Data has not been loaded.")
+
+        pipeline = make_pipeline(
+            PCA(n_components=self.n_components),
+            LogisticRegression(max_iter=1000),
+        )
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        scores = cross_validate(
+            pipeline,
+            self.X_train,
+            self.y_train,
+            cv=cv,
+            scoring=["accuracy", "f1_macro"],
+        )
+
+        print(f"{n_splits}-fold cross-validation (on training set):")
+        print(
+            f"  Accuracy:  {scores['test_accuracy'].mean():.4f} "
+            f"+/- {scores['test_accuracy'].std():.4f}"
+        )
+        print(
+            f"  Macro-F1:  {scores['test_f1_macro'].mean():.4f} "
+            f"+/- {scores['test_f1_macro'].std():.4f}"
+        )
+        return scores
+
     def scree_plot(self, max_components=300) -> None:
         if self.X_train is None:
             raise ValueError("Data has not been loaded.")
@@ -164,6 +199,7 @@ if __name__ == "__main__":
     print("PCA Regression Model","="*50)
     model = RegressionPCA(n_components=50)
     model.load_data()
+    model.cross_validate(n_splits=5)
     model.train()
     model.evaluate()
     model.scree_plot()
